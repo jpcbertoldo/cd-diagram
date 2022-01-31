@@ -1,4 +1,4 @@
-classifier_name,dataset_name,accuracy
+model,dataset,metric
 clf3,dataset1,0.8197802197802198
 clf3,dataset2,0.80306905370844
 clf3,dataset3,0.84
