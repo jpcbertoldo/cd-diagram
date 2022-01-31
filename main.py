@@ -1,9 +1,21 @@
-# Author: Hassan Ismail Fawaz <hassan.ismail-fawaz@uha.fr>
-#         Germain Forestier <germain.forestier@uha.fr>
-#         Jonathan Weber <jonathan.weber@uha.fr>
-#         Lhassane Idoumghar <lhassane.idoumghar@uha.fr>
-#         Pierre-Alain Muller <pierre-alain.muller@uha.fr>
-# License: GPL3
+"""
+Author: Joao P C Bertoldo <jpcbertoldo@mines-paris.psl.eu>
+
+This is an adaptation.
+
+The original authors are:
+
+    # Author: Hassan Ismail Fawaz <hassan.ismail-fawaz@uha.fr>
+    #         Germain Forestier <germain.forestier@uha.fr>
+    #         Jonathan Weber <jonathan.weber@uha.fr>
+    #         Lhassane Idoumghar <lhassane.idoumghar@uha.fr>
+    #         Pierre-Alain Muller <pierre-alain.muller@uha.fr>
+    # License: GPL3
+"""
+
+from argparse import ArgumentParser
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -12,14 +24,39 @@ import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
-matplotlib.rcParams['font.family'] = 'sans-serif'
-matplotlib.rcParams['font.sans-serif'] = 'Arial'
+# old fonts
+# matplotlib.rcParams['font.family'] = 'sans-serif'
+# matplotlib.rcParams['font.sans-serif'] = 'Arial'
+
+# latex-ish fonts
+# src: https://stackoverflow.com/a/27697390/9582881
+
+# math
+matplotlib.rcParams['mathtext.fontset'] = 'custom'
+matplotlib.rcParams['mathtext.rm'] = 'Bitstream Vera Sans'
+matplotlib.rcParams['mathtext.it'] = 'Bitstream Vera Sans:italic'
+matplotlib.rcParams['mathtext.bf'] = 'Bitstream Vera Sans:bold'
+# regular text
+matplotlib.rcParams['mathtext.fontset'] = 'stix'
+matplotlib.rcParams['font.family'] = 'STIXGeneral'
 
 import operator
 import math
 from scipy.stats import wilcoxon
 from scipy.stats import friedmanchisquare
 import networkx
+
+
+# the .csv must have these columns
+CSV_COLUMNS = ["model", "dataset", "metric"]
+# original csv columns: classifier_name,dataset_name,accuracy
+# i changed it to be more generic but internally i use the old column names
+CSV_COLUMNS_TRANSLATE_TO_OLD_NAMES = {
+    "model": "classifier_name",
+    "dataset": "dataset_name",
+    "metric": "accuracy",
+}
+
 
 # inspired from orange3 https://docs.orange.biolab.si/3/data-mining-library/reference/evaluation.cd.html
 def graph_ranks(avranks, names, p_values, cd=None, cdmethod=None, lowv=None, highv=None,
@@ -176,7 +213,7 @@ def graph_ranks(avranks, names, p_values, cd=None, cdmethod=None, lowv=None, hig
     bigtick = 0.3
     smalltick = 0.15
     linewidth = 2.0
-    linewidth_sign = 4.0
+    linewidth_sign = 2.0
 
     tick = None
     for a in list(np.arange(lowv, highv, 0.5)) + [highv]:
@@ -226,7 +263,7 @@ def graph_ranks(avranks, names, p_values, cd=None, cdmethod=None, lowv=None, hig
         for l, r in lines:
             line([(rankpos(ssums[l]) - side, start),
                   (rankpos(ssums[r]) + side, start)],
-                 linewidth=linewidth_sign)
+                 linewidth=linewidth_sign,)
             start += height
             print('drawing: ', l, r)
 
@@ -240,11 +277,11 @@ def graph_ranks(avranks, names, p_values, cd=None, cdmethod=None, lowv=None, hig
     cliques = form_cliques(p_values, nnames)
     i = 1
     achieved_half = False
-    print(nnames)
+    # print(nnames)
     for clq in cliques:
         if len(clq) == 1:
             continue
-        print(clq)
+        # print(clq)
         min_idx = np.array(clq).min()
         max_idx = np.array(clq).max()
         if min_idx >= len(nnames) / 2 and achieved_half == False:
@@ -252,7 +289,7 @@ def graph_ranks(avranks, names, p_values, cd=None, cdmethod=None, lowv=None, hig
             achieved_half = True
         line([(rankpos(ssums[min_idx]) - side, start),
               (rankpos(ssums[max_idx]) + side, start)],
-             linewidth=linewidth_sign)
+             linewidth=linewidth_sign, color='r',)
         start += height
 
 
@@ -274,31 +311,6 @@ def form_cliques(p_values, nnames):
     g = networkx.Graph(g_data)
     return networkx.find_cliques(g)
 
-
-def draw_cd_diagram(df_perf=None, alpha=0.05, title=None, labels=False):
-    """
-    Draws the critical difference diagram given the list of pairwise classifiers that are
-    significant or not
-    """
-    p_values, average_ranks, _ = wilcoxon_holm(df_perf=df_perf, alpha=alpha)
-
-    print(average_ranks)
-
-    for p in p_values:
-        print(p)
-
-
-    graph_ranks(average_ranks.values, average_ranks.keys(), p_values,
-                cd=None, reverse=True, width=9, textspace=1.5, labels=labels)
-
-    font = {'family': 'sans-serif',
-        'color':  'black',
-        'weight': 'normal',
-        'size': 22,
-        }
-    if title:
-        plt.title(title,fontdict=font, y=0.9, x=0.5)
-    plt.savefig('cd-diagram.png',bbox_inches='tight')
 
 def wilcoxon_holm(alpha=0.05, df_perf=None):
     """
@@ -378,6 +390,71 @@ def wilcoxon_holm(alpha=0.05, df_perf=None):
     # return the p-values and the average ranks
     return p_values, average_ranks, max_nb_datasets
 
-df_perf = pd.read_csv('DefaultvsTunedvsEnsembleCritDiffAcc.csv',index_col=False)
 
-draw_cd_diagram(df_perf=df_perf, title='Accuracy', labels=True)
+def main(input: Path, output: Path, alpha=.05) -> None:
+
+    print("loading .csv")
+    df = pd.read_csv(input, index_col=False)
+    for col in CSV_COLUMNS:
+        assert col in df.columns, f"{col=} not in {df.columns}"
+    df = df.rename(columns=CSV_COLUMNS_TRANSLATE_TO_OLD_NAMES)
+    
+    print("computing")
+    p_values, average_ranks, _ = wilcoxon_holm(df_perf=df, alpha=alpha)
+
+    print("drawing fig")
+    graph_ranks(average_ranks.values, average_ranks.keys(), p_values,
+                cd=None, reverse=True, width=9, textspace=1.5, labels=True)
+
+    print("saving")
+    plt.savefig(output, bbox_inches='tight')
+
+
+# original csv columns: classifier_name,dataset_name,accuracy
+_parser = ArgumentParser(
+    description="""
+    Create a critical difference diagram from `file` and save it in `output_dir`.
+    The input file should be a .csv with the columns ["model", "dataset", "metric"].
+    Metric is assumed to be 'higher is better'.
+    """
+)
+
+_parser.add_argument('input', type=Path, help='Where the input file is')
+_parser.add_argument(
+    '--output', type=Path, default=None,
+    help='Where to output the result. Default is the same dir as the input file with a name "cf-diagram..png".'
+)
+_parser.add_argument("--alpha", type=float, default=.05, help="Alpha confidence level for the statistical tests.")
+
+def _post_parser(args):
+    """Treat special cases of parsing and validate some stuff."""
+    assert args.input.exists(), f"{args.input=}" 
+    assert args.input.suffix == ".csv"
+
+    if args.output is not None:
+        assert not args.output.exists(), f"{args.output=}"
+    
+    else:
+        # default output 
+        args.output = args.input.parent / f"cd-diagram.{datetime.now().isoformat(timespec='seconds')}.png"
+
+    assert args.output.parent.exists(), f"{args.output.parent=}"
+    assert args.output.suffix == ".png"
+
+    assert 0 < args.alpha < 1, f"{args.alpha=}"
+
+    return args
+
+if __name__ == "__main__":
+
+    args = _parser.parse_args()
+    args = _post_parser(args)
+    
+    try:
+        main(**vars(args))
+
+    except Exception as ex:
+        import traceback
+        print(traceback.format_exc())
+        raise SystemExit(1)
+ 
