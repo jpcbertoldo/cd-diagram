@@ -1,5 +1,5 @@
 """
-Author: Joao P C Bertoldo <jpcbertoldo@mines-paris.psl.eu>
+Author: Joao P C Bertoldo <jpcbertoldo@minesparis.psl.eu>
 
 This is an adaptation.
 
@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib
+from pandas import DataFrame
 
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -48,10 +49,10 @@ import networkx
 
 
 # the .csv must have these columns
-CSV_COLUMNS = ["model", "dataset", "metric"]
+DATAFRAME_COLUMNS = ["model", "dataset", "metric"]
 # original csv columns: classifier_name,dataset_name,accuracy
 # i changed it to be more generic but internally i use the old column names
-CSV_COLUMNS_TRANSLATE_TO_OLD_NAMES = {
+DATAFRAME_COLUMNS_TRANSLATE_TO_OLD_NAMES = {
     "model": "classifier_name",
     "dataset": "dataset_name",
     "metric": "accuracy",
@@ -60,7 +61,7 @@ CSV_COLUMNS_TRANSLATE_TO_OLD_NAMES = {
 
 # inspired from orange3 https://docs.orange.biolab.si/3/data-mining-library/reference/evaluation.cd.html
 def graph_ranks(avranks, names, p_values, cd=None, cdmethod=None, lowv=None, highv=None,
-                width=6, textspace=1, reverse=False, filename=None, labels=False, **kwargs):
+                width=6, textspace=1, reverse=False, filename=None, labels=False, fig=None, **kwargs):
     """
     Draws a CD graph, which is used to display  the differences in methods'
     performance. See Janez Demsar, Statistical Comparisons of Classifiers over
@@ -180,8 +181,10 @@ def graph_ranks(avranks, names, p_values, cd=None, cdmethod=None, lowv=None, hig
     minnotsignificant = max(2 * 0.2, linesblank)
     height = cline + ((k + 1) / 2) * 0.2 + minnotsignificant
 
-    fig = plt.figure(figsize=(width, height))
-    fig.set_facecolor('white')
+    if fig is None:
+        fig = plt.figure(figsize=(width, height))
+        fig.set_facecolor('white')
+    
     ax = fig.add_axes([0, 0, 1, 1])  # reverse y axis
     ax.set_axis_off()
 
@@ -291,6 +294,8 @@ def graph_ranks(avranks, names, p_values, cd=None, cdmethod=None, lowv=None, hig
               (rankpos(ssums[max_idx]) + side, start)],
              linewidth=linewidth_sign, color='r',)
         start += height
+    
+    return fig, ax
 
 
 def form_cliques(p_values, nnames):
@@ -317,7 +322,7 @@ def wilcoxon_holm(alpha=0.05, df_perf=None):
     Applies the wilcoxon signed rank test between each pair of algorithm and then use Holm
     to reject the null's hypothesis
     """
-    print(pd.unique(df_perf['classifier_name']))
+    # print(pd.unique(df_perf['classifier_name']))
     # count the number of tested datasets per classifier
     df_counts = pd.DataFrame({'count': df_perf.groupby(
         ['classifier_name']).size()}).reset_index()
@@ -333,7 +338,7 @@ def wilcoxon_holm(alpha=0.05, df_perf=None):
     if friedman_p_value >= alpha:
         # then the null hypothesis over the entire classifiers cannot be rejected
         print('the null hypothesis over the entire classifiers cannot be rejected')
-        exit()
+        # exit()
     # get the number of classifiers
     m = len(classifiers)
     # init array that contains the p-values calculated by the Wilcoxon signed rank test
@@ -383,7 +388,7 @@ def wilcoxon_holm(alpha=0.05, df_perf=None):
 
     # number of wins
     dfff = df_ranks.rank(ascending=False)
-    print(dfff[dfff == 1.0].sum(axis=1))
+    # print(dfff[dfff == 1.0].sum(axis=1))
 
     # average the ranks
     average_ranks = df_ranks.rank(ascending=False).mean(axis=1).sort_values(ascending=False)
@@ -391,23 +396,42 @@ def wilcoxon_holm(alpha=0.05, df_perf=None):
     return p_values, average_ranks, max_nb_datasets
 
 
-def main(input: Path, output: Path, alpha=.05) -> None:
-
-    print("loading .csv")
-    df = pd.read_csv(input, index_col=False)
-    for col in CSV_COLUMNS:
+def make_diagram(df: DataFrame, alpha: float = 0.05, fig=None):
+    """
+    df must have the columns: model, dataset, metric.
+    alpha is the confidence level of the wilcoxon signed rank test
+    """
+    
+    for col in DATAFRAME_COLUMNS:
         assert col in df.columns, f"{col=} not in {df.columns}"
-    df = df.rename(columns=CSV_COLUMNS_TRANSLATE_TO_OLD_NAMES)
+        
+    df = df.rename(columns=DATAFRAME_COLUMNS_TRANSLATE_TO_OLD_NAMES)
     
     print("computing")
     p_values, average_ranks, _ = wilcoxon_holm(df_perf=df, alpha=alpha)
 
     print("drawing fig")
-    graph_ranks(average_ranks.values, average_ranks.keys(), p_values,
-                cd=None, reverse=True, width=9, textspace=1.5, labels=True)
+    fig, ax = graph_ranks(
+        average_ranks.values, 
+        average_ranks.keys(), 
+        p_values,
+        cd=None, 
+        reverse=True, 
+        width=9, 
+        textspace=1.5, 
+        labels=True,
+        fig=fig,
+    )
+    return p_values, average_ranks, fig, ax
 
-    print("saving")
-    plt.savefig(output, bbox_inches='tight')
+
+def main(input: Path, output: Path, alpha: float) -> None:
+
+    print("loading .csv")
+    _, __, output_figure, ___ = make_diagram(pd.read_csv(input, index_col=False), alpha=alpha)
+
+    print("saving figure")
+    output_figure.savefig(output, bbox_inches='tight')
 
 
 # original csv columns: classifier_name,dataset_name,accuracy
